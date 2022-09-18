@@ -5,6 +5,8 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
+    "build:wc": "vue-cli-service build --target wc --name megrez-comment 'src/components/MegrezComment.vue'",
+    "dev": "vue-cli-service build --target wc --name megrez-comment 'src/components/MegrezComment.vue' --watch",
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
