@@ -2,70 +2,73 @@
   <div class="comment-container">
     <div id="comments" class="clearfix">
       <div class="zdypl">
-        <span class="response" data-no-instant
-          >发表评论
-          <a
-            id="cancel-comment-reply-link"
-            href="javascript:void(0);"
-            rel="nofollow"
-            style="display: none"
-            onclick="return cancelReplyArticle(2);"
+        <span class="response" data-no-instant v-if="mode === 'reply'"
+          >回复评论/
+          <a href="javascript:void(0);" @click.prevent="clickCancelReply">
+            取消回复</a
           >
-            取消评论</a
-          ></span
-        >
-        <form
-          method="post"
-          :action="['/article/' + id + '/comment']"
-          id="comment-form"
-          class="comment-form"
-          role="form"
-          onsubmit="getElementById('misubmit').disabled=true;return true;"
-        >
+        </span>
+        <span class="response" data-no-instant v-if="mode === 'new'"
+          >发表评论
+        </span>
+        <form id="comment-form" class="comment-form">
           <input
             type="text"
             name="author"
             maxlength="12"
-            id="author"
             class="form-control input-control clearfix"
             placeholder="昵称 (必填哦)"
-            value=""
+            v-model="commentForm.author"
             required
           />
           <input
             type="email"
             name="email"
-            id="email"
             class="form-control input-control clearfix"
             placeholder="邮箱 (必填哦)"
-            value=""
+            v-model="commentForm.email"
             required
           />
           <input
             type="url"
             name="url"
-            id="url"
             class="form-control input-control clearfix"
-            placeholder="博客地址 (https://)"
-            value=""
+            placeholder="博客地址 (http:// | https://)"
+            v-model="commentForm.url"
           />
           <textarea
             name="text"
-            id="textarea"
             class="form-control"
             placeholder="来都来了，看都看了，想说点什么吗 0_o"
+            v-model="commentForm.content"
             required
           ></textarea>
-          <button type="submit" class="submit" id="misubmit">提交</button>
+          <button
+            @click.prevent="clickSubmit"
+            class="submit-enable"
+            v-if="enableSubmit"
+          >
+            提 交
+          </button>
+          <button
+            @click.prevent="clickSubmit"
+            class="submit-disable"
+            disabled="disabled"
+            v-else
+          >
+            提 交
+          </button>
         </form>
+        <alert-list ref="alert"></alert-list>
       </div>
+
       <ol class="comment-list">
-        <li class="comment-body comment-parent comment-odd">
-          <comment-view></comment-view>
+        <li class="comment-body comment-parent comment-odd" v-for="comment in comments" :key="comment.id">
+          <comment-item :comment=comment></comment-item>
           <div class="comment-children">
             <ol class="comment-list">
-              <li class="comment-body comment-child comment-odd">
-                <comment-view></comment-view>
+              <li class="comment-body comment-child comment-odd" v-for="subComment in comment.subComments" :key="subComment.id">
+                <comment-item :comment=subComment></comment-item>
               </li>
             </ol>
           </div>
@@ -81,15 +84,110 @@
 </template>
 
 <script>
-import CommentView from "./CommentView";
+import CommentItem from "./CommentItem";
+import AlertList from "./alert/AlertList.vue";
+import axios from "axios";
 export default {
   data() {
     return {
-      helloworld: "hello world",
+      mode: "reply",
+      enableSubmit: false,
+      client: {},
+      commentForm: {
+        author: "",
+        email: "",
+        url: "",
+        content: "",
+      },
+
+      pagination: {
+        pageNum: 1,
+        pageSize: 10,
+        total: 0,
+      },
+      comments: [],
     };
   },
+  methods: {
+    validateForm() {
+      let emailExp =
+        /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+      let emailRegex = new RegExp(emailExp);
+      if (!emailRegex.exec(this.commentForm.email)) {
+        this.$refs.alert.warning("邮箱格式不正确");
+        return false;
+      }
+      if (this.commentForm.url != '') {
+        let urlExp =
+          /(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/gi;
+        let urlReg = new RegExp(urlExp);
+        if (!urlReg.exec(this.commentForm.url)) {
+          this.$refs.alert.warning("url 格式不正确");
+          return false;
+        }
+      }
+      return true;
+    },
+    clickSubmit() {
+      if (!this.validateForm()) {
+        return;
+      }
+      alert("提交成功");
+    },
+    clickCancelReply() {
+      console.log("click reply");
+      this.mode = "new";
+    },
+    initApiClient() {
+      var instance = axios.create({
+        baseURL: "http://localhost:8080/api",
+        timeout: 10000,
+        withCredentials: false,
+      });
+      instance.interceptors.response.use(
+        (response) => {
+          if (response.status !== 200) return Promise.reject(response);
+          const { status, msg } = response.data;
+          if (status === 0) return response.data;
+          if (msg) {
+            this.$refs.alert.warning("msg");
+          } else {
+            this.$refs.alert.warning("未知服务端错误");
+          }
+          return Promise.reject(response);
+        },
+        (err) => {
+          this.$refs.alert.warning("请求路径或请求参数错误");
+          return Promise.reject(err);
+        }
+      );
+      this.client = instance;
+    },
+    fetchComments() {
+      const { pageNum, pageSize } = this.pagination;
+      this.client
+        .get(this.type + "/" + this.id + "/comments", {
+          params: { pageNum, pageSize },
+        })
+        .then((res) => {
+          if (res.status === 0) {
+            this.pagination.total = res.data.total;
+            this.comments = res.data.list || [];
+          } else {
+            this.$message.error("获取评论列表失败");
+          }
+        })
+        .catch(() => {
+          this.$message.error("获取评论列表失败");
+        })
+        .finally(() => {
+          // this.loading = false;
+        });
+    },
+  },
   components: {
-    CommentView,
+    CommentItem,
+    AlertList,
   },
   props: {
     id: {
@@ -106,9 +204,28 @@ export default {
       },
     },
   },
+  watch: {
+    commentForm: {
+      handler: function () {
+        if (
+          this.commentForm.author === "" ||
+          this.commentForm.email === "" ||
+          this.commentForm.content === ""
+        ) {
+          this.enableSubmit = false;
+          return;
+        }
+        this.enableSubmit = true;
+      },
+      deep: true,
+    },
+  },
+  mounted() {
+    this.initApiClient();
+    this.fetchComments();
+  },
 };
 </script>
-
 <style>
 /* CSS 初始化开始 */
 * {
@@ -116,25 +233,30 @@ export default {
   margin: 0px;
   padding: 0px;
 }
+
 ul {
   /*去掉ul的小圆点*/
   list-style: none;
 }
+
 body {
   /*把主体设为统一格式*/
   font-size: 12px;
   font-family: "微软雅黑";
   color: #716f70;
 }
+
 a {
   /*改变a链接的默认格式，颜色和下划线*/
   color: #716f70;
   text-decoration: none;
 }
+
 a.hover {
   /*改变鼠标经过颜色*/
   color: skyblue;
 }
+
 /* CSS 初始化结束 */
 
 button,
@@ -361,7 +483,7 @@ textarea:-ms-input-placeholder {
 
 .comment-form {
   position: relative;
-  margin: 0 0 40px;
+  margin: 0 0 20px;
   padding: 10px 20px;
   border-radius: 3px;
   background: #fff;
@@ -402,8 +524,39 @@ textarea:-ms-input-placeholder {
   border-bottom: 1px dashed #ddd;
   border-radius: 0;
 }
+/* for enabled submit button */
+.comment-form .submit-enable {
+  font-size: 13px;
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: block;
+  line-height: 24px;
+  height: 28px;
+  margin: 0 auto;
+  padding: 0 20px;
+  -webkit-transition-duration: 0.4s;
+  transition-duration: 0.4s;
+  text-align: center;
+  color: #fafafa;
+  border: 1px solid #eb5055;
+  border-radius: 5px;
+  background-color: #eb5055;
+}
 
-.comment-form .submit {
+.comment-form .submit-enable:hover,
+.submit-enable:active,
+.submit-enable:active:focus,
+.submit-enable:focus {
+  color: #eb5055;
+  cursor: pointer;
+  border: 1px solid #eb5055;
+  outline-style: none;
+  background-color: #fafafa;
+}
+
+/* for disabled submit button */
+.comment-form .submit-disable {
   font-size: 13px;
   position: absolute;
   right: 20px;
@@ -418,16 +571,16 @@ textarea:-ms-input-placeholder {
   text-align: center;
   color: #313131;
   border: 1px solid #dedede;
-  border-radius: 30px;
+  border-radius: 5px;
   background-color: #f7f7f7;
 }
 
-.comment-form .submit:hover,
-.submit:active,
-.submit:active:focus,
-.submit:focus {
-  color: #eb5055;
-  border: 1px solid #eb5055;
+.comment-form .submit-disable:hover,
+.submit-disable:active,
+.submit-disable:active:focus,
+.submit-disable:focus {
+  color: #313131;
+  cursor: not-allowed;
   outline-style: none;
   background-color: #fafafa;
 }

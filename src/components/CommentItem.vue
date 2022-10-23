@@ -25,7 +25,7 @@
         <a
           href="javascript:void(0);"
           rel="nofollow"
-          onclick="return replyArticle(2, 2, 2);"
+          @click.prevent="handleClickReply"
           >回复</a
         >
       </span>
@@ -35,7 +35,26 @@
 
 <script>
 export default {
-  name: "CommentView",
+  name: "CommentItem",
+  props: {
+    comment: {
+      type: Object,
+      required: true,
+    },
+  },
+  data() {
+    return {
+      // comment: {
+      //   id: 0,
+      //   author: "",
+      //   avatar: "",
+      //   email: "",
+      //   url: "",
+      //   content: "",
+      //   createTime: "",
+      // },
+    };
+  },
 };
 </script>
 

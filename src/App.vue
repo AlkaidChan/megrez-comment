@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <MegrezComment :id="1" type="article" />
+    <MegrezComment :id="2" type="article" />
   </div>
 </template>
 
