@@ -4,7 +4,7 @@
       <div class="zdypl">
         <span class="response" data-no-instant v-if="mode === 'reply'"
           >回复评论/
-          <a href="javascript:void(0);" @click.prevent="clickCancelReply">
+          <a href="javascript:void(0);" @click.prevent="handleClickCancelReply">
             取消回复</a
           >
         </span>
@@ -33,7 +33,7 @@
             type="url"
             name="url"
             class="form-control input-control clearfix"
-            placeholder="博客地址 (http:// | https://)"
+            placeholder="博客地址（非必填）"
             v-model="commentForm.url"
           />
           <textarea
@@ -63,21 +63,42 @@
       </div>
 
       <ol class="comment-list">
-        <li class="comment-body comment-parent comment-odd" v-for="comment in comments" :key="comment.id">
-          <comment-item :comment=comment></comment-item>
+        <li
+          class="comment-body comment-parent comment-odd"
+          v-for="comment in comments"
+          :key="comment.id"
+        >
+          <comment-item
+            :comment="comment"
+            @onClickReply="handleOnClickReply($event, comment.id)"
+          ></comment-item>
           <div class="comment-children">
             <ol class="comment-list">
-              <li class="comment-body comment-child comment-odd" v-for="subComment in comment.subComments" :key="subComment.id">
-                <comment-item :comment=subComment></comment-item>
+              <li
+                class="comment-body comment-child comment-odd"
+                v-for="subComment in comment.subComments"
+                :key="subComment.id"
+              >
+                <comment-item
+                  :comment="subComment"
+                  :parent="comment"
+                  @onClickReply="handleOnClickReply($event, comment.id)"
+                ></comment-item>
               </li>
             </ol>
           </div>
         </li>
       </ol>
-      <div class="lists-navigator clearfix">
-        <ol class="page-navigator">
-          <li class="current"><a href="/2/comment-page/1#comments">1</a></li>
-        </ol>
+
+      <div class="comments-loading">
+        <div class="loading-animation" v-if="isLoadingComments">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+        <div class="loading-end" v-if="isBottom">已经到底了</div>
       </div>
     </div>
   </div>
@@ -85,21 +106,31 @@
 
 <script>
 import CommentItem from "./CommentItem";
+import ls from "../utils/storage";
 import AlertList from "./alert/AlertList.vue";
 import axios from "axios";
+import md5 from "js-md5";
 export default {
   data() {
     return {
-      mode: "reply",
+      ls: {},
+      mode: "new",
       enableSubmit: false,
       client: {},
+      token: "",
+      isLoadingComments: false,
       commentForm: {
         author: "",
         email: "",
         url: "",
         content: "",
+        type: this.type,
+        articleID: this.type == "article" ? this.id : 0,
+        pageID: this.type == "page" ? this.id : 0,
+        rootID: 0,
+        parentID: 0,
       },
-
+      isBottom: false,
       pagination: {
         pageNum: 1,
         pageSize: 10,
@@ -117,7 +148,7 @@ export default {
         this.$refs.alert.warning("邮箱格式不正确");
         return false;
       }
-      if (this.commentForm.url != '') {
+      if (this.commentForm.url != "") {
         let urlExp =
           /(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/gi;
         let urlReg = new RegExp(urlExp);
@@ -132,10 +163,42 @@ export default {
       if (!this.validateForm()) {
         return;
       }
-      alert("提交成功");
+      this.client
+        .post("comment", this.commentForm)
+        .then(() => {
+          this.$refs.alert.success("提交成功");
+          this.handleClickCancelReply();
+          this.commentForm.content = "";
+
+          this.fetchComments();
+        })
+        .catch(() => {
+          this.$message.error("获取评论列表失败");
+        })
+        .finally(() => {
+          // this.loading = false;
+        });
+      ls.set("Author", this.commentForm.author);
+      ls.set("Email", this.commentForm.email);
+      ls.set("URL", this.commentForm.url);
     },
-    clickCancelReply() {
-      console.log("click reply");
+    handleOnClickReply(pid, rid) {
+      this.commentForm.parentID = pid;
+      this.commentForm.rootID = rid;
+      this.mode = "reply";
+      let scrollBox = window;
+      let anchorElement = document.getElementById("comments");
+      if (scrollBox) {
+        scrollBox.scrollTo({
+          left: 0,
+          top: anchorElement.offsetTop - 80,
+          behavior: "smooth",
+        });
+      }
+    },
+    handleClickCancelReply() {
+      this.commentForm.parentID = 0;
+      this.commentForm.rootID = 0;
       this.mode = "new";
     },
     initApiClient() {
@@ -148,11 +211,10 @@ export default {
         (response) => {
           if (response.status !== 200) return Promise.reject(response);
           const { status, msg } = response.data;
-          if (status === 0) return response.data;
-          if (msg) {
-            this.$refs.alert.warning("msg");
+          if (status === 0) {
+            return response.data;
           } else {
-            this.$refs.alert.warning("未知服务端错误");
+            this.$refs.alert.warning(msg);
           }
           return Promise.reject(response);
         },
@@ -163,7 +225,19 @@ export default {
       );
       this.client = instance;
     },
+    fetchIdentity() {
+      if (ls.get("Author")) {
+        this.commentForm.author = ls.get("Author");
+      }
+      if (ls.get("Email")) {
+        this.commentForm.email = ls.get("Email");
+      }
+      if (ls.get("URL")) {
+        this.commentForm.url = ls.get("URL");
+      }
+    },
     fetchComments() {
+      this.isLoadingComments = true;
       const { pageNum, pageSize } = this.pagination;
       this.client
         .get(this.type + "/" + this.id + "/comments", {
@@ -172,7 +246,40 @@ export default {
         .then((res) => {
           if (res.status === 0) {
             this.pagination.total = res.data.total;
-            this.comments = res.data.list || [];
+            let comments = res.data.list || [];
+            comments = comments.map((comment) => {
+              if (comment.url) {
+                comment.url =
+                  comment.url.startsWith("http://") ||
+                  comment.url.startsWith("https://")
+                    ? comment.url
+                    : "http://" + comment.url;
+              }
+              comment.avatar =
+                "https://www.gravatar.com/avatar/" +
+                md5(comment.mail.toLowerCase());
+              comment.subComments = comment.subComments || [];
+              comment.subComments = comment.subComments.map((subComment) => {
+                if (subComment.url) {
+                  subComment.url =
+                    subComment.url.startsWith("http://") ||
+                    subComment.url.startsWith("https://")
+                      ? subComment.url
+                      : "http://" + subComment.url;
+                }
+                subComment.avatar =
+                  "https://www.gravatar.com/avatar/" +
+                  md5(subComment.mail.toLowerCase());
+                return subComment;
+              });
+              return comment;
+            });
+            this.comments = this.comments.concat(comments);
+            // caculate page
+            if (pageNum * pageSize >= this.pagination.total) {
+              this.isBottom = true;
+            }
+            this.pagination.pageNum++;
           } else {
             this.$message.error("获取评论列表失败");
           }
@@ -181,8 +288,20 @@ export default {
           this.$message.error("获取评论列表失败");
         })
         .finally(() => {
-          // this.loading = false;
+          this.isLoadingComments = false;
         });
+    },
+    listenBottomOut() {
+      const scrollTop =
+        document.documentElement.scrollTop || document.body.scrollTop;
+      const clientHeight = document.documentElement.clientHeight;
+      const scrollHeight = document.documentElement.scrollHeight;
+      if (scrollTop + clientHeight >= scrollHeight) {
+        if (!this.isBottom && !this.isLoadingComments) {
+          this.fetchComments();
+        }
+        return;
+      }
     },
   },
   components: {
@@ -221,12 +340,17 @@ export default {
     },
   },
   mounted() {
+    window.addEventListener("scroll", this.listenBottomOut);
+    this.fetchIdentity();
     this.initApiClient();
     this.fetchComments();
   },
+  destroyed() {
+    window.removeEventListener("scroll", this.listenBottomOut, false);
+  },
 };
 </script>
-<style>
+<style lang="less">
 /* CSS 初始化开始 */
 * {
   /*把所有标签的内外边距取消掉*/
@@ -237,13 +361,6 @@ export default {
 ul {
   /*去掉ul的小圆点*/
   list-style: none;
-}
-
-body {
-  /*把主体设为统一格式*/
-  font-size: 12px;
-  font-family: "微软雅黑";
-  color: #716f70;
 }
 
 a {
@@ -297,29 +414,6 @@ textarea:-ms-input-placeholder {
   color: #5f5f5f;
 }
 
-#comments .page-navigator a:hover {
-  border-bottom: none;
-}
-
-#comments .lists-navigator a:hover {
-  color: #eb5050;
-}
-
-#comments .lists-navigator {
-  margin: 20px 0;
-}
-
-#comments .lists-navigator ol {
-  margin: 20px 0;
-  padding: 0 10px;
-  list-style: none;
-  text-align: center;
-}
-
-#comments .lists-navigator ol li.current a {
-  color: #fff;
-}
-
 .comment-container {
   position: relative;
   z-index: 1;
@@ -332,10 +426,6 @@ textarea:-ms-input-placeholder {
   margin: 0 auto;
   padding: 20px 20px 0 20px;
   padding-bottom: 1px;
-}
-
-#comments .page-navigator {
-  margin: 0;
 }
 
 #comments a {
@@ -594,5 +684,95 @@ textarea:-ms-input-placeholder {
   padding: 10px;
   margin-bottom: -40px;
   margin-top: -10px !important;
+}
+
+.comments-loading {
+  .loading-animation {
+    margin-left: 60%;
+    transform: translate3d(-50%, -50%, 0);
+    margin-top: 30px;
+    background-color: #f7f7f7;
+    .dot {
+      width: 24px;
+      height: 24px;
+      background: #3ac;
+      border-radius: 100%;
+      display: inline-block;
+      animation: slide 1s infinite;
+    }
+    .dot:nth-child(1) {
+      animation-delay: 0.1s;
+      background: #32aacc;
+    }
+    .dot:nth-child(2) {
+      animation-delay: 0.2s;
+      background: #64aacc;
+    }
+    .dot:nth-child(3) {
+      animation-delay: 0.3s;
+      background: #96aacc;
+    }
+    .dot:nth-child(4) {
+      animation-delay: 0.4s;
+      background: #c8aacc;
+    }
+    .dot:nth-child(5) {
+      animation-delay: 0.5s;
+      background: #faaacc;
+    }
+    @-moz-keyframes slide {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.3;
+        transform: scale(2);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+    @-webkit-keyframes slide {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.3;
+        transform: scale(2);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+    @-o-keyframes slide {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.3;
+        transform: scale(2);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+    @keyframes slide {
+      0% {
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.3;
+        transform: scale(2);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+  }
+  .loading-end {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
 }
 </style>
