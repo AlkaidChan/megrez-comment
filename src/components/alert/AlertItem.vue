@@ -28,7 +28,6 @@
 </template>
 
 <script>
-import "font-awesome/css/font-awesome.min.css";
 export default {
   name: "AlertItem",
 
@@ -59,7 +58,7 @@ export default {
       this.$emit("update:show", false);
       this.$emit("close");
     },
-    setInterval(mills = 100000) {
+    setInterval(mills = 5000) {
       this.timer = setTimeout(() => {
         this.close();
       }, mills);
@@ -72,6 +71,7 @@ export default {
 </script>
 
 <style lang="less" scoped >
+@import "~@/assets/css/font-awesome.min.css";
 .alert-node {
   padding: 12px 24px;
   height: 22px;
