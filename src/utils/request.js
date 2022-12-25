@@ -2,7 +2,7 @@ import axios from "axios";
 // import { ACCESS_TOKEN } from "@/store/mutation-types";
 // import store from '@/store'
 
-const API_HOST = "http://localhost:8080/api";
+const API_HOST = "/api";
 
 const CODE = {
   SUCCESS: 0,
