@@ -203,7 +203,7 @@ export default {
     },
     initApiClient() {
       var instance = axios.create({
-        baseURL: "http://localhost:8080/api",
+        baseURL: "/api",
         timeout: 10000,
         withCredentials: false,
       });
