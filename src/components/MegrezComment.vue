@@ -165,12 +165,47 @@ export default {
       }
       this.client
         .post("comment", this.commentForm)
-        .then(() => {
+        .then((res) => {
+          if (res.status !== 0) {
+            this.$refs.alert.warning(res.msg);
+            return;
+          }
           this.$refs.alert.success("提交成功");
+          let comment = res.data;
+          if (comment.url) {
+            comment.url =
+              comment.url.startsWith("http://") ||
+              comment.url.startsWith("https://")
+                ? comment.url
+                : "http://" + comment.url;
+          }
+          comment.avatar =
+            "https://www.gravatar.com/avatar/" +
+            md5(comment.mail.toLowerCase());
+          comment.subComments = comment.subComments || [];
+          comment.subComments = comment.subComments.map((subComment) => {
+            if (subComment.url) {
+              subComment.url =
+                subComment.url.startsWith("http://") ||
+                subComment.url.startsWith("https://")
+                  ? subComment.url
+                  : "http://" + subComment.url;
+            }
+            subComment.avatar =
+              "https://www.gravatar.com/avatar/" +
+              md5(subComment.mail.toLowerCase());
+          });
+          if (comment.rootID === 0) {
+            this.comments.unshift(comment);
+          } else {
+            for (let i = 0; i < this.comments.length; i++) {
+              if (this.comments[i].id === comment.rootID) {
+                this.comments[i].subComments.push(comment);
+              }
+            }
+          }
           this.handleClickCancelReply();
           this.commentForm.content = "";
-
-          this.fetchComments();
         })
         .catch(() => {
           this.$message.error("获取评论列表失败");
@@ -187,7 +222,7 @@ export default {
       this.commentForm.rootID = rid;
       this.mode = "reply";
       let scrollBox = window;
-      let anchorElement = document.getElementById("comments");
+      let anchorElement = document.getElementsByTagName("megrez-comment")[0];
       if (scrollBox) {
         scrollBox.scrollTo({
           left: 0,
